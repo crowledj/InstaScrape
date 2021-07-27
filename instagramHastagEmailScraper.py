@@ -27,7 +27,9 @@ from selenium import webdriver
 from selenium.common.exceptions import (InvalidSessionIdException,
                                         NoSuchElementException,
                                         StaleElementReferenceException,
-                                        NoSuchAttributeException)
+                                        NoSuchAttributeException,
+                                        ElementClickInterceptedException, TimeoutException,
+                                        ElementNotInteractableException)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.remote_connection import LOGGER
@@ -87,7 +89,7 @@ options.add_argument("user-agent= 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_6
 driver_ = webdriver.Chrome(options=options, executable_path=DRIVER_PATH ) #, service_args=["--verbose", "--log-path=D:\\qc1.log"])
     
 
-csvfile = open('vaudPart_Swiss_companies_list.csv','w', newline='')
+csvfile = open('intsaPeepsDeets.csv','w', newline='')
 header = ('Name', 'Category', 'Website', 'Phone no.')
 obj=csv.writer(csvfile)
 obj.writerow(header)
@@ -95,12 +97,18 @@ obj.writerow(header)
 csvfile.close()
 #obj.close()
 
-def write_2_csv(name_info='some_shit_company',category='Other', contact_info_TEL='+336471234567', contact_info_webtite='http://www.garbage.com'):
+def write_2_csv(username='some_shit_company', num_followers ='1k', email='joeBloggs@hgmail.com'):
 
     global csvfile, obj
-    csvfile = open('vaudPart_Swiss_companies_list.csv','a', newline='')
+    csvfile = open('intsaPeepsDeets.csv','a', newline='')
     obj=csv.writer(csvfile)
-    obj.writerow( (name_info,category, contact_info_TEL, contact_info_webtite) )
+    print('writing to file ... !!! s')
+    try:
+        obj.writerow( (username, num_followers, unidecode.unidecode(str(email[-1]))) )
+    except UnicodeEncodeError as err:
+        print('issue with writing to csv here -- now  -- eroor is ' + str(err) +  ' ...')
+        pass     
+
     csvfile.close()
 
     return True
@@ -116,6 +124,7 @@ def scrapeLaad(driver):
     errors_caught = 0
     page_counter = 1
 
+    driver_inner = webdriver.Chrome(options=options, executable_path=DRIVER_PATH ) #, service_args=["--verbose", "--log-path=D:\\qc1.log"])
 
    # Login in girst gimp ..!
 
@@ -144,18 +153,31 @@ def scrapeLaad(driver):
     searchbox.clear()
 
     #search for the hashtag cat
-    keywords = ["#diy",'#pets','#cork']
+    keywords = ["#crafts",'#pets','#cork']
     #crafts
+ 
+    tot_email_counter = 5000
 
     for keyword in keywords:
-        searchbox.send_keys(keyword)
+
+        valid_email_counter = 0
         
-        # Wait for 5 seconds
-        time.sleep(2)
-        searchbox.send_keys(Keys.ENTER)
-        time.sleep(2)
-        searchbox.send_keys(Keys.ENTER)
+        try:
+            searchbox.send_keys(keyword)
+            
+            # Wait for 5 seconds
+            time.sleep(2)
+            searchbox.send_keys(Keys.ENTER)
+            time.sleep(2)
+            searchbox.send_keys(Keys.ENTER)
+
+        except (StaleElementReferenceException, NoSuchElementException, NoSuchAttributeException, ElementClickInterceptedException, ElementNotInteractableException) as err:
+            print('issue with first block after scrolls, skipping this post for now  -- eroor is ' + str(err) +  ' ...')
+            continue               
+         
         time.sleep(3)
+
+        main_pg_url = driver.current_url
 
         jump = 600
         new_start = 0
@@ -167,7 +189,8 @@ def scrapeLaad(driver):
         last_height = driver.execute_script("return document.body.scrollHeight")
         loopCount = 0
         emails = []
-        while( business_counter < num_valais_businesses ):
+        last_final_index = 0
+        while( valid_email_counter < tot_email_counter ):
                                                                 #'//*[@id="react-root"]/div/div/section/main/article'
             # centra_page_elements = driver.find_elements_by_xpath('//*[@id="react-root"]/section/main/article/div')
 
@@ -197,71 +220,190 @@ def scrapeLaad(driver):
             # new_end = new_start + jump
 
             # time.sleep(5)
+            
 
-            # Scroll down to bottom
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            if loopCount > 0:
+                driver.get(main_pg_url)
+                # Scroll down to bottom
+            if loopCount >= 0:
+                time.sleep(1.5)    
+                driver.execute_script("window.scrollTo(  " + str(loopCount) +  ", "  + str(loopCount + 2) + "*document.body.scrollHeight);")
 
-            # Wait to load page
-            time.sleep(6*SCROLL_PAUSE_TIME)
+                # Wait to load page
+                time.sleep(6*SCROLL_PAUSE_TIME)
 
-            # Calculate new scroll height and compare with last scroll height
-            new_height = driver.execute_script("return document.body.scrollHeight")
-            time.sleep(2*SCROLL_PAUSE_TIME)
-            if new_height == last_height and loopCount != 0:
-                break
-            last_height = new_height
+                # Calculate new scroll height and compare with last scroll height
+                new_height = driver.execute_script("return document.body.scrollHeight")
+                time.sleep(2*SCROLL_PAUSE_TIME)
+                if new_height == last_height and loopCount != 0:
+                    break
+                last_height = new_height
+
             loopCount += 1
 
-            if (loopCount % 10) == 0:
-
+            print('loop value = ' + str(loopCount) + ' ...')
+            stuck_in_first_block = 0
+            #driver.get(main_pg_url)
+            if (loopCount % 1) == 0:
+                time.sleep(2.25)    
                 #target all images on the page
                 images = driver.find_elements_by_tag_name('a')
-                links = [image.get_attribute('href') for image in images]
-                for image in images:
-                    outer_clikableElment = image.find_element_by_xpath('./..')
-                    outer_clikableElment.click()
-                    time.sleep(0.5)
+                #links = [image.get_attribute('href') for image in images]
 
+                start_indx = last_final_index
+                print('going into the for loop of images again : start_indx = ' + str(start_indx) + ' -- len(images) = ' + str(len(images)) + ' -- len(images)-23 = ' + str(len(images)) + ' ...')
+                for index  in range(start_indx,len(images)):
+                    #driver.navigate.refresh()
+                    # if index > 0:
+                    #     driver.get(main_pg_url)
+
+                    if stuck_in_first_block > 3:
+                        driver.back()
+                        time.sleep(2.25)
+                        stuck_in_first_block = 0
+                        #continue
+
+                    try:
+
+                        time.sleep(1.5)    
+                        driver.execute_script("window.scrollTo(  " + str(loopCount) +  ", "  + str(loopCount + 2) + "*document.body.scrollHeight);")
+
+                        # Wait to load page
+                        time.sleep(6*SCROLL_PAUSE_TIME)
+
+                        # Calculate new scroll height and compare with last scroll height
+                        new_height = driver.execute_script("return document.body.scrollHeight")
+                        time.sleep(2*SCROLL_PAUSE_TIME)
+                        
+                        time.sleep(1.25)
+                        images_in_loop = driver.find_elements_by_tag_name('a')
+                        num_images = len(images_in_loop)
+                        if index < len(images):
+                            time.sleep(2.75)
+                            outer_clikableElment = images_in_loop[index].find_element_by_xpath('./..')
+                        else:
+                            break
+
+                        #if type(outer_clikableElment) == WebEl
+                            
+                        #outer_clikableElment.click()
+                        time.sleep(3.25)
+                        WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "div")))
+
+                        outer_clikableElment.click()
+                            
+                    except (StaleElementReferenceException, NoSuchElementException, NoSuchAttributeException, ElementClickInterceptedException, ElementNotInteractableException) as err:
+                        print('issue with first block after scrolls, skipping this post for now  -- eroor is ' + str(err) +  ' ...')
+                        stuck_in_first_block += 1
+                        continue    
+
+                    #WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, './.'))).click()
+                    #time.sleep(0.5)
 
             ## 1).  Check this popups text content for an emil ....        
-                    elm = driver.find_element_by_tag_name('body')
-                    texts = elm.text
+                    try:
+                        elm = driver.find_element_by_tag_name('body')
+                        texts = elm.text
+                    except (StaleElementReferenceException, NoSuchElementException, NoSuchAttributeException) as err:
+                        print('issue with second block after scrolls, skipping this post for now  -- eroor is ' + str(err) +  ' ...')
+                        continue   
 
                     mail_address= ''
-                    if '@' in texts:
-                        # pattern = "\S+@*\n" #this wild card doesnt appear to work?
-                        mail_address = re.findall('\S+@\S+', texts)
+                    # if '@' in texts and '.' in texts:
+                    #     # pattern = "\S+@*\n" #this wild card doesnt appear to work?
+                    #     mail_address = re.findall('\S+@\S+', texts)
 
+                    # if mail_address != '' an5d len(mail_address) == 0:
+                    #     print(mail_address )
+                    #     write_2_csv(Username, num_Follwers, mail_address)    
+
+                    time.sleep(1.5)    
+
+                    try:
             ## 2).  Go to actual page of poster to check text for email
-                    head = elm.find_elements_by_tag_name('header')
-                    
-                    a_lnks = head[1].find_elements_by_tag_name('a')
+                        head = elm.find_elements_by_tag_name('header')
+                        time.sleep(1.5)
+                        if len(head) >= 1:
+                            a_lnks = head[-1].find_elements_by_tag_name('a')
+                        else:
+                            continue    
+
+                    except (StaleElementReferenceException, NoSuchElementException, NoSuchAttributeException) as err:
+                        print('issue with third block after scrolls, skipping this post for now  -- eroor is ' + str(err) +  ' ...')
+                        parent = driver.back()
+                        granparent = driver.back()
+                        continue                           
                     #poster_pg_linbk = a_lnks[1].get_attribute('href') 
-                    a_lnks[1].click()
 
-                    elm_inner = driver.find_element_by_tag_name('body')
-                    inner_texts = elm_inner.text
+                    if len(a_lnks) >= 2:
+                        Username = str(a_lnks[1].text)
+                        try:
+                            a_lnks[1].click()
+                        except (StaleElementReferenceException, NoSuchElementException, ElementClickInterceptedException) as err:
+                            parent = driver.back()
+                            granparent = driver.back()
+                            print('issue with fourth block after scrolls, skipping this post for now  -- eroor is ' + str(err) +  ' ...')
+                            continue                              
 
-                    if '@' in inner_texts:
+                    try:                                        
+                        #follower_elm = elm.find_element_by_xpath('//*[@id="react-root"]/section/main/div/header/section/ul/li[2]/a/span')
+                                                                                                          # '//*[@id="react-root"]/section/main/div/header/section/ul/li[2]/a'  
+                                                                                                          # '//*[@id="react-root"]/section/main/div/header/section/ul/li[2]/a'    
+                        #time.sleep(2.5)                                                                                    
+                        follower_elm = WebDriverWait(driver, 7).until(EC.element_to_be_clickable((By.XPATH, '//*[@id="react-root"]/section/main/div/header/section/ul/li[2]/a/span')))
+                        check = -1
+                        time.sleep(2.5)
+                        num_Follwers = follower_elm.get_attribute('title')
+
+                    except (StaleElementReferenceException, NoSuchElementException, NoSuchAttributeException, TimeoutException) as err:
+                        #parent = driver.back()
+                        #granparent = driver.back()
+                        granparent = driver.back()
+                        num_Follwers = 'N/A'
+                        print('issue with fifth block after scrolls, skipping this post for now  -- eroor is ' + str(err) +  ' ...')
+                        pass                          
+
+                    try:        
+                        elm_inner = driver.find_element_by_tag_name('body')
+                        inner_texts = elm_inner.text
+                    except (StaleElementReferenceException, NoSuchElementException, NoSuchAttributeException) as err:
+                        print('issue with sixth block after scrolls, skipping this post for now  -- eroor is ' + str(err) +  ' ...')
+                        parent = driver.back()
+                        granparent = driver.back()
+                        continue      
+
+                    split_inner_texts = inner_texts.split('\nJobs\nHelp\nAPI\nPrivacy\nTerms')
+                    if len(split_inner_texts) >= 1:
+                        relvant_inner_texts =  split_inner_texts[0]
+
+                    #inner_texts_pieces = relvant_inner_texts.split('\n')
+                    print(' Done processing post no. ' + str(index) + ' ....')
+                    
+                    if '@' in split_inner_texts[0]:
                         #pattern_iner = "\S+@*\n" #this wild card doesnt appear to work?
                         #compiled_iner = re.compile(pattern)
                         #soln = compiled_iner.search(inner_texts)
-                        mail_address = re.findall('\S+@\S+', inner_texts)
+                        mail_address = re.findall('\S+@\S+', split_inner_texts[0])
                         
-
-                    if mail_address != '':
-                        write_2_csv('some_shit_company', 'Other', '+336471234567',mail_address)
+                    if  len(mail_address) != 0:
+                        if mail_address[-1] != '' :
+                            print(mail_address )
+                            valid_email_counter += 1
+                            write_2_csv(Username, num_Follwers, mail_address)
 
                     #grand_parent_elm = elm_inner.find_element_by_xpath('./..')
-
+                    time.sleep(1.5)
                     ## then use another driver to go to this link ..., or click it ( a_lnks.click() ...?? )
-                    parent = driver.back()
-                    granparent = parent.back()
-                #images = images[:-2]
-               
 
+                    parent = driver.back()
+                    granparent = driver.back()
+                #images = images[:-2]
+  
+            last_final_index = index
             #print('Number of scraped images: ', len(images))
             print('Counter of scraped images: ', loopCount)
+
+            
 
                 #for index, block in enumerate(centra_page_elements[1:]):
 
